@@ -30,21 +30,40 @@ export type OptimizationType =
   | 'spread-days'          // Distribuir clases en más días
   | 'no-fridays';          // Evitar clases los viernes
 
-// Preferencias del usuario
+// Preferencias del usuario (versión frontend)
 export interface UserPreferences {
+  // Preferencias de profesores
   professorPreferences: ProfessorPreference[];
+  profesoresPreferidos?: string[]; // Nombres de profesores preferidos (para backend)
+  profesoresEvitar?: string[]; // Nombres de profesores a evitar (para backend)
+  
+  // Horarios
   blockedTimeSlots: BlockedTimeSlot[];
+  horarios_preferidos: string[]; // Formato "HH:MM-HH:MM" para backend
+  
+  // Optimizaciones
   optimizations: OptimizationType[];
   maxDailyHours?: number;  // Máximo de horas por día
   preferredDays?: DayOfWeek[]; // Días preferidos para tener clases
+  
+  // Ranking académico (0.0 - 1.0)
+  studentRanking?: number;
+  
+  // Ramos prioritarios
+  ramosPrioritarios: string[]; // Códigos de ramos prioritarios
 }
 
 // Preferencias por defecto
 export const DEFAULT_PREFERENCES: UserPreferences = {
   professorPreferences: [],
+  profesoresPreferidos: [],
+  profesoresEvitar: [],
   blockedTimeSlots: [],
+  horarios_preferidos: [],
   optimizations: ['minimize-gaps'],
   maxDailyHours: 6,
   preferredDays: undefined,
+  studentRanking: 0.5,
+  ramosPrioritarios: [],
 };
 

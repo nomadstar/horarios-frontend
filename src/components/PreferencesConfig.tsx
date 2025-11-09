@@ -1,27 +1,22 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
 import { X } from 'lucide-react';
-import { mallaData } from '@/data/malla';
-import { getProfessorsForCourse } from '@/data/professors';
 import { TIME_SLOTS, DAYS_OF_WEEK } from '@/types/schedule';
 import type { 
   UserPreferences, 
   OptimizationType 
 } from '@/types/preferences';
 import type { DayOfWeek } from '@/types/schedule';
+import { mallaData } from '@/data/malla';
 
 interface PreferencesConfigProps {
-  selectedCourses: Set<number>;
+  approvedCourses: Set<number>;
   preferences: UserPreferences;
   onPreferencesChange: (preferences: UserPreferences) => void;
   onContinue: () => void;
@@ -29,7 +24,7 @@ interface PreferencesConfigProps {
 }
 
 export function PreferencesConfig({
-  selectedCourses,
+  approvedCourses,
   preferences,
   onPreferencesChange,
   onContinue,
@@ -71,26 +66,6 @@ export function PreferencesConfig({
     },
   ];
 
-  // Añadir preferencia de profesor
-  const addProfessorPreference = (courseId: number, professorId: string) => {
-    const newPrefs = localPreferences.professorPreferences.filter(p => p.courseId !== courseId);
-    newPrefs.push({ courseId, professorId });
-    setLocalPreferences({
-      ...localPreferences,
-      professorPreferences: newPrefs,
-    });
-  };
-
-  // Remover preferencia de profesor
-  const removeProfessorPreference = (courseId: number) => {
-    setLocalPreferences({
-      ...localPreferences,
-      professorPreferences: localPreferences.professorPreferences.filter(
-        p => p.courseId !== courseId
-      ),
-    });
-  };
-
   // Añadir bloque bloqueado
   const addBlockedTimeSlot = (day: DayOfWeek, timeSlotId: number) => {
     const slotKey = `${day}-${timeSlotId}`;
@@ -129,14 +104,46 @@ export function PreferencesConfig({
     });
   };
 
+  // Manejar cambio de ranking académico
+  const handleRankingChange = (value: number[]) => {
+    setLocalPreferences({
+      ...localPreferences,
+      studentRanking: value[0] / 100,
+    });
+  };
+
+  // Toggle ramo prioritario
+  const togglePriorityCourse = (courseCode: string) => {
+    const isPriority = localPreferences.ramosPrioritarios.includes(courseCode);
+    
+    setLocalPreferences({
+      ...localPreferences,
+      ramosPrioritarios: isPriority
+        ? localPreferences.ramosPrioritarios.filter(c => c !== courseCode)
+        : [...localPreferences.ramosPrioritarios, courseCode],
+    });
+  };
+
   const handleContinue = () => {
     onPreferencesChange(localPreferences);
     onContinue();
   };
 
-  const coursesArray = Array.from(selectedCourses)
-    .map(id => mallaData.find(c => c.id === id))
-    .filter(Boolean);
+  // Obtener cursos disponibles (no aprobados)
+  const availableCourses = mallaData.filter(course => {
+    if (approvedCourses.has(course.id)) return false;
+    
+    // Verificar prerequisitos
+    const hasNoPrereqs = course.prerequisites.length === 0 ||
+                        (course.prerequisites.length === 1 && course.prerequisites[0] === 0);
+
+    const allPrereqsApproved = hasNoPrereqs || course.prerequisites.every((prereqId: number) => {
+      if (prereqId === 0) return true;
+      return approvedCourses.has(prereqId);
+    });
+
+    return allPrereqsApproved;
+  });
 
   return (
     <Card className="w-full border-0 shadow-none bg-transparent">
@@ -148,64 +155,106 @@ export function PreferencesConfig({
       </CardHeader>
 
       <CardContent className="p-6 space-y-6">
-        {/* Sección 1: Preferencias de Profesores */}
+        {/* Sección 1: Ranking Académico */}
         <div className="bg-white rounded-lg p-5 border border-gray-200">
           <h3 className="text-base font-semibold mb-3 flex items-center gap-2 text-gray-700">
-            👨‍🏫 Preferencias de Profesores
+            📊 Ranking Académico
           </h3>
           <p className="text-sm text-gray-600 mb-4">
-            Selecciona tus profesores preferidos para cada curso
+            Tu ranking académico afecta tu prioridad de inscripción y las recomendaciones de dificultad.
+            <br />
+            <strong>Mejor ranking = Mayor prioridad</strong>
           </p>
 
           <div className="space-y-4">
-            {coursesArray.map((course) => {
-              if (!course) return null;
-              const professors = getProfessorsForCourse(course.id);
-              const currentPref = localPreferences.professorPreferences.find(
-                p => p.courseId === course.id
-              );
-
-              return (
-                <div key={course.id} className="flex items-center gap-4 p-3 bg-gray-50 rounded">
-                  <div className="flex-1">
-                    <div className="font-semibold text-sm">{course.code}</div>
-                    <div className="text-xs text-gray-600">{course.name}</div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={currentPref?.professorId || ''}
-                      onValueChange={(value) => addProfessorPreference(course.id, value)}
-                    >
-                      <SelectTrigger className="w-48">
-                        <SelectValue placeholder="Sin preferencia" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {professors.map((prof) => (
-                          <SelectItem key={prof.id} value={prof.id}>
-                            {prof.name} {prof.rating && `⭐ ${prof.rating}`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    
-                    {currentPref && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeProfessorPreference(course.id)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            <div>
+              <Label className="text-sm font-medium">
+                Ranking: {((localPreferences.studentRanking || 0.5) * 100).toFixed(0)}%
+              </Label>
+              <Slider
+                value={[(localPreferences.studentRanking || 0.5) * 100]}
+                onValueChange={handleRankingChange}
+                min={0}
+                max={100}
+                step={1}
+                className="mt-2"
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                0% = Ranking más bajo, 100% = Ranking más alto (mejor prioridad)
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Sección 2: Bloques de Tiempo Bloqueados */}
+        {/* Sección 2: Ramos Prioritarios */}
+        <div className="bg-white rounded-lg p-5 border border-gray-200">
+          <h3 className="text-base font-semibold mb-3 flex items-center gap-2 text-gray-700">
+            ⭐ Ramos Prioritarios
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Selecciona los ramos que más te interesan tomar este semestre
+          </p>
+
+          {availableCourses.length === 0 ? (
+            <p className="text-sm text-gray-500 italic">
+              No hay ramos disponibles para inscribir. Verifica que hayas marcado tus ramos aprobados.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-96 overflow-y-auto">
+              {availableCourses.map((course) => {
+                const isPriority = localPreferences.ramosPrioritarios.includes(course.code);
+                
+                return (
+                  <div
+                    key={course.id}
+                    className={`p-3 rounded border-2 cursor-pointer transition-all ${
+                      isPriority
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                    onClick={() => togglePriorityCourse(course.code)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={isPriority}
+                        onCheckedChange={() => togglePriorityCourse(course.code)}
+                      />
+                      <div className="flex-1">
+                        <div className="font-semibold text-sm">{course.code}</div>
+                        <div className="text-xs text-gray-600">{course.name}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {localPreferences.ramosPrioritarios.length > 0 && (
+            <div className="mt-4">
+              <p className="text-sm font-medium mb-2">
+                Ramos prioritarios seleccionados: {localPreferences.ramosPrioritarios.length}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {localPreferences.ramosPrioritarios.map(code => (
+                  <Badge 
+                    key={code} 
+                    variant="secondary"
+                    className="flex items-center gap-1"
+                  >
+                    {code}
+                    <X 
+                      className="h-3 w-3 cursor-pointer" 
+                      onClick={() => togglePriorityCourse(code)}
+                    />
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Sección 3: Horarios No Disponibles */}
         <div className="bg-white rounded-lg p-5 border border-gray-200">
           <h3 className="text-base font-semibold mb-3 flex items-center gap-2 text-gray-700">
             🚫 Horarios No Disponibles
@@ -292,7 +341,7 @@ export function PreferencesConfig({
           )}
         </div>
 
-        {/* Sección 3: Optimizaciones */}
+        {/* Sección 4: Optimizaciones */}
         <div className="bg-white rounded-lg p-5 border border-gray-200">
           <h3 className="text-base font-semibold mb-3 flex items-center gap-2 text-gray-700">
             🎯 Optimizaciones de Horario
@@ -337,11 +386,10 @@ export function PreferencesConfig({
             ← Volver
           </Button>
           <Button onClick={handleContinue}>
-            Generar Horario →
+            Generar Horarios →
           </Button>
         </div>
       </CardContent>
     </Card>
   );
 }
-

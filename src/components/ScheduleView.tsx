@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -9,19 +10,113 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { AlertTriangle } from 'lucide-react';
-import { TIME_SLOTS, DAYS_OF_WEEK } from '@/types/schedule';
-import type { Schedule } from '@/types/schedule';
-import { getBlockAt } from '@/utils/scheduleGenerator';
+import { AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import type { BackendSolution, BackendSeccion } from '@/types/backend';
 
 interface ScheduleViewProps {
-  schedule: Schedule;
+  solutions: BackendSolution[];
   onBack: () => void;
-  onRegenerateSchedule: () => void;
 }
 
-export function ScheduleView({ schedule, onBack, onRegenerateSchedule }: ScheduleViewProps) {
+// Mapeo de días en español a abreviaciones
+const DAY_MAP: Record<string, string> = {
+  'LU': 'Lunes',
+  'MA': 'Martes',
+  'MI': 'Miércoles',
+  'JU': 'Jueves',
+  'VI': 'Viernes',
+  'SA': 'Sábado',
+  'DO': 'Domingo',
+};
+
+const DAYS_OF_WEEK = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+
+// Horarios estándar UDP
+const TIME_SLOTS = [
+  { id: 1, start: '08:30', end: '09:50' },
+  { id: 2, start: '10:00', end: '11:20' },
+  { id: 3, start: '11:30', end: '12:50' },
+  { id: 4, start: '13:00', end: '14:20' },
+  { id: 5, start: '14:30', end: '15:50' },
+  { id: 6, start: '16:00', end: '17:20' },
+  { id: 7, start: '17:25', end: '18:45' },
+  { id: 8, start: '18:50', end: '20:10' },
+  { id: 9, start: '20:15', end: '21:35' },
+];
+
+export function ScheduleView({ solutions, onBack }: ScheduleViewProps) {
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [showWarningModal, setShowWarningModal] = useState(true);
+
+  if (!solutions || solutions.length === 0) {
+    return (
+      <Card className="w-full border-0 shadow-none bg-transparent">
+        <CardHeader className="text-center pb-6">
+          <CardTitle className="text-2xl font-bold mb-2">❌ No se encontraron horarios</CardTitle>
+          <p className="text-gray-600 text-base">
+            No se pudo generar ningún horario con tus preferencias actuales.
+            <br />
+            Intenta ajustar tus filtros o ramos prioritarios.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="flex justify-center">
+            <Button onClick={onBack}>
+              ← Volver a Configuración
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const currentSolution = solutions[currentIndex];
+
+  const handlePrevious = () => {
+    setCurrentIndex(prev => Math.max(0, prev - 1));
+  };
+
+  const handleNext = () => {
+    setCurrentIndex(prev => Math.min(solutions.length - 1, prev + 1));
+  };
+
+  // Función para parsear horario y ubicarlo en la grilla
+  const parseScheduleBlock = (seccion: BackendSeccion) => {
+    const blocks: Array<{
+      day: string;
+      timeSlotId: number;
+      seccion: BackendSeccion;
+    }> = [];
+
+    seccion.horarios.forEach(horario => {
+      const dayName = DAY_MAP[horario.dia] || horario.dia;
+      
+      // Buscar el time slot que corresponde al horario
+      const matchingSlot = TIME_SLOTS.find(slot => {
+        const slotStart = slot.start.replace(':', '');
+        const horarioStart = horario.inicio.replace(':', '');
+        return slotStart === horarioStart;
+      });
+
+      if (matchingSlot) {
+        blocks.push({
+          day: dayName,
+          timeSlotId: matchingSlot.id,
+          seccion,
+        });
+      }
+    });
+
+    return blocks;
+  };
+
+  // Generar todos los bloques del horario actual
+  const allBlocks = currentSolution.secciones.flatMap(seccion => parseScheduleBlock(seccion));
+
+  // Función para obtener el bloque en un día y horario específico
+  const getBlockAt = (day: string, timeSlotId: number) => {
+    return allBlocks.find(block => block.day === day && block.timeSlotId === timeSlotId);
+  };
 
   return (
     <>
@@ -56,15 +151,15 @@ export function ScheduleView({ schedule, onBack, onRegenerateSchedule }: Schedul
                     Es posible que <strong>no puedas tomar exactamente este horario</strong> si los cupos se agotan
                   </li>
                   <li>
-                    Te recomendamos tener <strong>cursos alternativos</strong> preparados
+                    Te recomendamos tener <strong>horarios alternativos</strong> preparados
                   </li>
                 </ul>
               </div>
 
               <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
                 <p className="text-sm text-gray-700">
-                  <strong className="text-blue-700">💡 Recomendación:</strong> Prepara un plan B con cursos 
-                  alternativos y horarios menos populares para aumentar tus posibilidades de inscripción exitosa.
+                  <strong className="text-blue-700">💡 Recomendación:</strong> Revisa todos los horarios generados 
+                  ({solutions.length} disponibles) y prepara alternativas para aumentar tus posibilidades de inscripción exitosa.
                 </p>
               </div>
             </DialogDescription>
@@ -82,132 +177,164 @@ export function ScheduleView({ schedule, onBack, onRegenerateSchedule }: Schedul
 
       {/* Contenido del horario */}
       <Card className="w-full border-0 shadow-none bg-transparent">
-      <CardHeader className="text-center pb-6">
-        <CardTitle className="text-2xl font-bold mb-2">📅 Tu Horario</CardTitle>
-        <p className="text-gray-600 text-base mb-4">
-          {schedule.blocks.length / 2} cursos • {schedule.blocks.length} bloques semanales
-        </p>
-        
-        <div className="flex justify-center gap-3">
-          <Button variant="outline" onClick={onBack}>
-            ← Volver a la Malla
-          </Button>
-          <Button onClick={onRegenerateSchedule}>
-            🔄 Regenerar
-          </Button>
-        </div>
-      </CardHeader>
+        <CardHeader className="text-center pb-6">
+          <CardTitle className="text-2xl font-bold mb-2">📅 Horarios Generados</CardTitle>
+          <p className="text-gray-600 text-base mb-4">
+            {currentSolution.secciones.length} cursos • Score: {currentSolution.total_score}
+          </p>
+          
+          {/* Navegación entre horarios */}
+          <div className="flex justify-center items-center gap-4 mb-4">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handlePrevious}
+              disabled={currentIndex === 0}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            
+            <div className="text-sm font-medium">
+              Horario {currentIndex + 1} de {solutions.length}
+            </div>
+            
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleNext}
+              disabled={currentIndex === solutions.length - 1}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
 
-      <CardContent className="p-6">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse bg-white rounded-lg shadow-sm">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="border border-gray-300 p-3 text-sm font-semibold text-gray-700 w-32">
-                  Horario
-                </th>
-                {DAYS_OF_WEEK.map(day => (
-                  <th key={day} className="border border-gray-300 p-3 text-sm font-semibold text-gray-700">
-                    {day}
+          <div className="flex justify-center gap-3">
+            <Button variant="outline" onClick={onBack}>
+              ← Volver a Configuración
+            </Button>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-6">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse bg-white rounded-lg shadow-sm">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="border border-gray-300 p-3 text-sm font-semibold text-gray-700 w-32">
+                    Horario
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {TIME_SLOTS.map(timeSlot => (
-                <tr key={timeSlot.id} className="hover:bg-gray-50">
-                  <td className="border border-gray-300 p-3 text-xs text-gray-600 font-medium bg-gray-50">
-                    <div className="text-center">
-                      <div className="font-semibold">{timeSlot.id}</div>
-                      <div className="mt-1">{timeSlot.start}</div>
-                      <div>{timeSlot.end}</div>
-                    </div>
-                  </td>
-                  {DAYS_OF_WEEK.map(day => {
-                    const block = getBlockAt(schedule, day, timeSlot.id);
-                    
-                    return (
-                      <td 
-                        key={`${day}-${timeSlot.id}`} 
-                        className="border border-gray-300 p-2"
-                      >
-                        {block ? (
-                          <div className="bg-blue-100 border-l-4 border-blue-500 rounded p-2 h-full">
-                            <div className="font-bold text-xs text-blue-900">
-                              {block.courseCode}
-                            </div>
-                            <div className="text-xs text-blue-700 mt-1 line-clamp-2">
-                              {block.courseName}
-                            </div>
-                            {block.professor && (
-                              <div className="text-xs text-blue-600 mt-1 font-medium">
-                                👨‍🏫 {block.professor}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="h-16"></div>
-                        )}
-                      </td>
-                    );
-                  })}
+                  {DAYS_OF_WEEK.map(day => (
+                    <th key={day} className="border border-gray-300 p-3 text-sm font-semibold text-gray-700">
+                      {day}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {TIME_SLOTS.map(timeSlot => (
+                  <tr key={timeSlot.id} className="hover:bg-gray-50">
+                    <td className="border border-gray-300 p-3 text-xs text-gray-600 font-medium bg-gray-50">
+                      <div className="text-center">
+                        <div className="font-semibold">{timeSlot.id}</div>
+                        <div className="mt-1">{timeSlot.start}</div>
+                        <div>{timeSlot.end}</div>
+                      </div>
+                    </td>
+                    {DAYS_OF_WEEK.map(day => {
+                      const block = getBlockAt(day, timeSlot.id);
+                      
+                      return (
+                        <td 
+                          key={`${day}-${timeSlot.id}`} 
+                          className="border border-gray-300 p-2"
+                        >
+                          {block ? (
+                            <div className="bg-blue-100 border-l-4 border-blue-500 rounded p-2 h-full">
+                              <div className="font-bold text-xs text-blue-900">
+                                {block.seccion.codigo}
+                              </div>
+                              <div className="text-xs text-blue-700 mt-1 line-clamp-2">
+                                {block.seccion.nombre}
+                              </div>
+                              <div className="text-xs text-blue-600 mt-1">
+                                Sección: {block.seccion.seccion}
+                              </div>
+                              {block.seccion.profesor && (
+                                <div className="text-xs text-blue-600 mt-1 font-medium">
+                                  👨‍🏫 {block.seccion.profesor}
+                                </div>
+                              )}
+                              <div className="text-xs text-blue-500 mt-1">
+                                Cupos: {block.seccion.cupos_disponibles}/{block.seccion.cupos_totales}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="h-16"></div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-        {/* Resumen de cursos */}
-        <div className="mt-6 p-5 bg-blue-50 rounded-lg border border-blue-100">
-          <h3 className="font-semibold text-base mb-3 text-gray-700">📚 Cursos en este horario</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-            {Array.from(new Set(schedule.blocks.map(b => b.courseId))).map(courseId => {
-              const block = schedule.blocks.find(b => b.courseId === courseId);
-              if (!block) return null;
-              
-              const courseBlocks = schedule.blocks.filter(b => b.courseId === courseId);
-              
-              return (
-                <div key={courseId} className="bg-white p-3 rounded border border-blue-200">
+          {/* Resumen de cursos */}
+          <div className="mt-6 p-5 bg-blue-50 rounded-lg border border-blue-100">
+            <h3 className="font-semibold text-base mb-3 text-gray-700">📚 Cursos en este horario</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {currentSolution.secciones.map((seccion, idx) => (
+                <div key={idx} className="bg-white p-3 rounded border border-blue-200">
                   <div className="font-semibold text-sm text-blue-900">
-                    {block.courseCode}
+                    {seccion.codigo} - Sección {seccion.seccion}
                   </div>
                   <div className="text-xs text-gray-600 mt-1">
-                    {block.courseName}
+                    {seccion.nombre}
                   </div>
-                  <div className="text-xs text-gray-500 mt-2">
-                    {courseBlocks.length} bloques/semana
+                  {seccion.profesor && (
+                    <div className="text-xs text-gray-500 mt-2">
+                      Profesor: {seccion.profesor}
+                    </div>
+                  )}
+                  <div className="text-xs text-gray-500 mt-1">
+                    Cupos: {seccion.cupos_disponibles}/{seccion.cupos_totales}
+                  </div>
+                  <div className="mt-2">
+                    {seccion.horarios.map((horario, hIdx) => (
+                      <Badge key={hIdx} variant="outline" className="mr-1 mb-1 text-xs">
+                        {horario.dia} {horario.inicio}-{horario.fin}
+                      </Badge>
+                    ))}
                   </div>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* Estadísticas */}
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
-            <div className="text-2xl font-bold text-blue-600">
-              {Array.from(new Set(schedule.blocks.map(b => b.courseId))).length}
+          {/* Estadísticas */}
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
+              <div className="text-2xl font-bold text-blue-600">
+                {currentSolution.secciones.length}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Cursos</div>
             </div>
-            <div className="text-sm text-gray-600 mt-1">Cursos</div>
-          </div>
-          <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
-            <div className="text-2xl font-bold text-green-600">
-              {schedule.blocks.length}
+            <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
+              <div className="text-2xl font-bold text-green-600">
+                {currentSolution.total_score}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Score de optimización</div>
             </div>
-            <div className="text-sm text-gray-600 mt-1">Bloques de clase</div>
-          </div>
-          <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
-            <div className="text-2xl font-bold text-purple-600">
-              {(schedule.blocks.length * 1.33).toFixed(1)}h
+            <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
+              <div className="text-2xl font-bold text-purple-600">
+                {allBlocks.length}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Bloques semanales</div>
             </div>
-            <div className="text-sm text-gray-600 mt-1">Horas semanales</div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
     </>
   );
 }
-
