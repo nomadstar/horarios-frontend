@@ -4,10 +4,9 @@ export interface BackendSeccion {
   codigo: string;
   nombre: string;
   profesor: string;
-  horarios: BackendHorario[];
-  cupos_disponibles: number;
-  cupos_totales: number;
+  horario: string[];
   seccion: string;
+  codigo_box?: string;
 }
 
 export interface BackendHorario {

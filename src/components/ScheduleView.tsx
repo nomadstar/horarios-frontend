@@ -88,23 +88,51 @@ export function ScheduleView({ solutions, onBack }: ScheduleViewProps) {
       seccion: BackendSeccion;
     }> = [];
 
-    seccion.horarios.forEach(horario => {
-      const dayName = DAY_MAP[horario.dia] || horario.dia;
-      
-      // Buscar el time slot que corresponde al horario
-      const matchingSlot = TIME_SLOTS.find(slot => {
-        const slotStart = slot.start.replace(':', '');
-        const horarioStart = horario.inicio.replace(':', '');
-        return slotStart === horarioStart;
-      });
+    seccion.horario.forEach(horarioStr => {
+      if (horarioStr === "Sin horario") return;
 
-      if (matchingSlot) {
-        blocks.push({
-          day: dayName,
-          timeSlotId: matchingSlot.id,
-          seccion,
-        });
+      // Parsear strings como "LU MA JU 10:00 - 11:20" o "MI 10:00 - 11:20"
+      const parts = horarioStr.split(' ');
+
+      // Encontrar dónde termina la lista de días y comienza la hora
+      // Los días son códigos de 2 letras (LU, MA, MI, JU, VI, SA, DO)
+      let dayEndIndex = 0;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        // Si no es un código de día de 2 letras, entonces es parte de la hora
+        if (part.length !== 2 || !DAY_MAP[part]) {
+          dayEndIndex = i;
+          break;
+        }
       }
+
+      if (dayEndIndex === 0) return; // No se encontraron días válidos
+
+      // Extraer los códigos de día
+      const dayCodes = parts.slice(0, dayEndIndex);
+      // Extraer la hora (todo lo que queda)
+      const timeRange = parts.slice(dayEndIndex).join(' ');
+      const [startTime] = timeRange.split(' - ');
+
+      // Crear un bloque para cada día
+      dayCodes.forEach(dayCode => {
+        const dayName = DAY_MAP[dayCode] || dayCode;
+
+        // Buscar el time slot que corresponde al horario
+        const matchingSlot = TIME_SLOTS.find(slot => {
+          const slotStart = slot.start.replace(':', '');
+          const horarioStart = startTime.replace(':', '');
+          return slotStart === horarioStart;
+        });
+
+        if (matchingSlot) {
+          blocks.push({
+            day: dayName,
+            timeSlotId: matchingSlot.id,
+            seccion,
+          });
+        }
+      });
     });
 
     return blocks;
@@ -264,9 +292,11 @@ export function ScheduleView({ solutions, onBack }: ScheduleViewProps) {
                                   👨‍🏫 {block.seccion.profesor}
                                 </div>
                               )}
-                              <div className="text-xs text-blue-500 mt-1">
-                                Cupos: {block.seccion.cupos_disponibles}/{block.seccion.cupos_totales}
-                              </div>
+                              {block.seccion.codigo_box && (
+                                <div className="text-xs text-blue-500 mt-1">
+                                  Código: {block.seccion.codigo_box}
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <div className="h-16"></div>
@@ -297,13 +327,15 @@ export function ScheduleView({ solutions, onBack }: ScheduleViewProps) {
                       Profesor: {seccion.profesor}
                     </div>
                   )}
-                  <div className="text-xs text-gray-500 mt-1">
-                    Cupos: {seccion.cupos_disponibles}/{seccion.cupos_totales}
-                  </div>
+                  {seccion.codigo_box && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      Código: {seccion.codigo_box}
+                    </div>
+                  )}
                   <div className="mt-2">
-                    {seccion.horarios.map((horario, hIdx) => (
+                    {seccion.horario.map((horarioStr, hIdx) => (
                       <Badge key={hIdx} variant="outline" className="mr-1 mb-1 text-xs">
-                        {horario.dia} {horario.inicio}-{horario.fin}
+                        {horarioStr}
                       </Badge>
                     ))}
                   </div>

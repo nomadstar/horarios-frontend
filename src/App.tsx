@@ -10,7 +10,6 @@ import { solveSchedule, ApiError } from './services/api';
 import type { UserPreferences } from './types/preferences';
 import type { BackendSolution, BackendSolveRequest, BackendUserFilters } from './types/backend';
 import { mallaData } from './data/malla';
-import { Button } from './components/ui/button';
 import { Alert, AlertDescription } from './components/ui/alert';
 import { AlertCircle, Loader2 } from 'lucide-react';
 
@@ -81,8 +80,8 @@ export default function App() {
           minutos_entre_clases: preferences.optimizations.includes('minimize-gaps') ? 15 : undefined,
         },
         preferencias_profesores: {
-          habilitado: (preferences.profesoresPreferidos && preferences.profesoresPreferidos.length > 0) ||
-                     (preferences.profesoresEvitar && preferences.profesoresEvitar.length > 0),
+          habilitado: ((preferences.profesoresPreferidos && preferences.profesoresPreferidos.length > 0) ||
+                      (preferences.profesoresEvitar && preferences.profesoresEvitar.length > 0)) || false,
           profesores_preferidos: preferences.profesoresPreferidos,
           profesores_evitar: preferences.profesoresEvitar,
         },
@@ -94,7 +93,7 @@ export default function App() {
         ramos_pasados: approvedCourseCodes,
         ramos_prioritarios: preferences.ramosPrioritarios || [],
         horarios_preferidos: horariosPreferidos,
-        malla: 'MallaCurricular2020.xlsx', // TODO: hacer esto configurable
+        malla: 'MC2020.xlsx', // TODO: hacer esto configurable
         sheet: undefined,
         student_ranking: preferences.studentRanking || 0.5,
         filtros,
