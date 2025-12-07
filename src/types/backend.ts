@@ -9,6 +9,11 @@ export interface BackendSeccion {
   codigo_box?: string;
 }
 
+export interface BackendSeccionWrapper {
+  prioridad: number;
+  seccion: BackendSeccion;
+}
+
 export interface BackendHorario {
   dia: string;
   inicio: string;
@@ -18,7 +23,7 @@ export interface BackendHorario {
 
 export interface BackendSolution {
   total_score: number;
-  secciones: BackendSeccion[];
+  secciones: (BackendSeccion | BackendSeccionWrapper)[];
 }
 
 export interface BackendSolveResponse {
@@ -58,6 +63,8 @@ export interface BackendSolveRequest {
   ramos_pasados: string[];
   ramos_prioritarios: string[];
   horarios_preferidos: string[];
+  // Bloques de horarios prohibidos (ej: "LU 08:30 - 10:00", "MA 10:00 - 12:30")
+  horarios_prohibidos?: string[];
   malla: string;
   sheet?: string;
   student_ranking?: number;

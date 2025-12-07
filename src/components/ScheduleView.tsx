@@ -81,18 +81,37 @@ export function ScheduleView({ solutions, onBack }: ScheduleViewProps) {
   };
 
   // Función para parsear horario y ubicarlo en la grilla
-  const parseScheduleBlock = (seccion: BackendSeccion) => {
+  const parseScheduleBlock = (seccion: BackendSeccion | any) => {
     const blocks: Array<{
       day: string;
       timeSlotId: number;
       seccion: BackendSeccion;
     }> = [];
 
-    seccion.horario.forEach(horarioStr => {
-      if (horarioStr === "Sin horario") return;
+    // Validar que seccion es un objeto válido
+    if (!seccion || typeof seccion !== 'object') {
+      console.warn('Sección inválida:', seccion);
+      return blocks;
+    }
+
+    // Verificar que tiene al menos un código o nombre
+    if (!seccion.codigo && !seccion.nombre) {
+      console.warn('Sección sin código ni nombre:', seccion);
+      return blocks;
+    }
+
+    // Verificar que horario existe y es un array
+    if (!seccion.horario || !Array.isArray(seccion.horario) || seccion.horario.length === 0) {
+      console.warn(`Sección ${seccion.codigo || seccion.nombre || 'desconocida'} no tiene horario válido:`, seccion.horario);
+      return blocks;
+    }
+
+    seccion.horario.forEach((horarioStr: string) => {
+      if (!horarioStr || horarioStr === "Sin horario") return;
 
       // Parsear strings como "LU MA JU 10:00 - 11:20" o "MI 10:00 - 11:20"
-      const parts = horarioStr.split(' ');
+      const parts = horarioStr.split(' ').filter(Boolean);
+      if (parts.length < 2) return;
 
       // Encontrar dónde termina la lista de días y comienza la hora
       // Los días son códigos de 2 letras (LU, MA, MI, JU, VI, SA, DO)
@@ -139,7 +158,17 @@ export function ScheduleView({ solutions, onBack }: ScheduleViewProps) {
   };
 
   // Generar todos los bloques del horario actual
-  const allBlocks = currentSolution.secciones.flatMap(seccion => parseScheduleBlock(seccion));
+  // Desempacar secciones si vienen en wrapper (con prioridad)
+  const unwrappedSecciones = currentSolution.secciones.map(item => {
+    // Si el item tiene una propiedad 'seccion' anidada, es un wrapper
+    if ('seccion' in item && typeof item.seccion === 'object' && item.seccion !== null) {
+      return (item as any).seccion;
+    }
+    // Si no, es una sección directa
+    return item;
+  });
+
+  const allBlocks = unwrappedSecciones.flatMap(seccion => parseScheduleBlock(seccion));
 
   // Función para obtener el bloque en un día y horario específico
   const getBlockAt = (day: string, timeSlotId: number) => {
@@ -314,14 +343,16 @@ export function ScheduleView({ solutions, onBack }: ScheduleViewProps) {
           <div className="mt-6 p-5 bg-blue-50 rounded-lg border border-blue-100">
             <h3 className="font-semibold text-base mb-3 text-gray-700">📚 Cursos en este horario</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {currentSolution.secciones.map((seccion, idx) => (
+              {unwrappedSecciones.map((seccion, idx) => (
                 <div key={idx} className="bg-white p-3 rounded border border-blue-200">
                   <div className="font-semibold text-sm text-blue-900">
-                    {seccion.codigo} - Sección {seccion.seccion}
+                    {seccion.codigo || 'N/A'} - Sección {seccion.seccion || 'N/A'}
                   </div>
-                  <div className="text-xs text-gray-600 mt-1">
-                    {seccion.nombre}
-                  </div>
+                  {seccion.nombre && (
+                    <div className="text-xs text-gray-600 mt-1">
+                      {seccion.nombre}
+                    </div>
+                  )}
                   {seccion.profesor && (
                     <div className="text-xs text-gray-500 mt-2">
                       Profesor: {seccion.profesor}
@@ -332,13 +363,15 @@ export function ScheduleView({ solutions, onBack }: ScheduleViewProps) {
                       Código: {seccion.codigo_box}
                     </div>
                   )}
-                  <div className="mt-2">
-                    {seccion.horario.map((horarioStr, hIdx) => (
-                      <Badge key={hIdx} variant="outline" className="mr-1 mb-1 text-xs">
-                        {horarioStr}
-                      </Badge>
-                    ))}
-                  </div>
+                  {seccion.horario && Array.isArray(seccion.horario) && seccion.horario.length > 0 && (
+                    <div className="mt-2">
+                      {seccion.horario.map((horarioStr: string, hIdx: number) => (
+                        <Badge key={hIdx} variant="outline" className="mr-1 mb-1 text-xs">
+                          {horarioStr}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

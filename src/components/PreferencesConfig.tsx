@@ -18,7 +18,8 @@ interface PreferencesConfigProps {
   approvedCourses: Set<number>;
   preferences: UserPreferences;
   onPreferencesChange: (preferences: UserPreferences) => void;
-  onContinue: () => void;
+  // now onContinue receives the current preferences to avoid stale state
+  onContinue: (preferences: UserPreferences) => void;
   onBack: () => void;
 }
 
@@ -124,8 +125,11 @@ export function PreferencesConfig({
   };
 
   const handleContinue = () => {
+    // Pasar las preferencias actualizadas al componente padre y llamar
+    // al callback de continuación con las preferencias actuales para
+    // evitar condiciones de carrera con setState asincrónico.
     onPreferencesChange(localPreferences);
-    onContinue();
+    onContinue(localPreferences);
   };
 
   // Obtener cursos disponibles (no aprobados)
@@ -279,7 +283,7 @@ export function PreferencesConfig({
                   <tr key={slot.id}>
                     <td className="border border-gray-300 p-2 bg-gray-50 font-medium">
                       <div>{slot.id}</div>
-                      <div className="text-xs text-gray-600">{slot.start}</div>
+                      <div className="text-xs text-gray-600">{slot.start} - {slot.end}</div>
                     </td>
                     {DAYS_OF_WEEK.map(day => {
                       const isBlocked = localPreferences.blockedTimeSlots.some(
@@ -327,7 +331,7 @@ export function PreferencesConfig({
                       variant="secondary"
                       className="flex items-center gap-1"
                     >
-                      {blocked.day} {slot?.start}
+                      {blocked.day} {slot?.start}-{slot?.end}
                       <X 
                         className="h-3 w-3 cursor-pointer" 
                         onClick={() => removeBlockedTimeSlot(blocked.id)}

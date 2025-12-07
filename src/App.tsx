@@ -10,6 +10,7 @@ import { solveSchedule, ApiError } from './services/api';
 import type { UserPreferences } from './types/preferences';
 import type { BackendSolution, BackendSolveRequest, BackendUserFilters } from './types/backend';
 import { mallaData } from './data/malla';
+import { TIME_SLOTS } from './types/schedule';
 import { Alert, AlertDescription } from './components/ui/alert';
 import { AlertCircle, Loader2 } from 'lucide-react';
 
@@ -58,7 +59,16 @@ export default function App() {
         .map(id => mallaData.find(c => c.id === id)?.code)
         .filter(Boolean) as string[];
 
-      // Convertir horarios bloqueados a formato "HH:MM-HH:MM"
+      // Convertir horarios bloqueados a bloques prohibidos en formato "LU 08:30 - 10:00"
+      // Agrupamos slots por día y fusionamos secuencias de ids contiguos en un solo bloque.
+      const dayMap: Record<string, string> = {
+        'Lunes': 'LU',
+        'Martes': 'MA',
+        'Miércoles': 'MI',
+        'Jueves': 'JU',
+        'Viernes': 'VI',
+      };
+
       const horariosPreferidos: string[] = [];
       if (preferences.optimizations.includes('morning-classes')) {
         horariosPreferidos.push('08:30-12:50');
@@ -67,25 +77,90 @@ export default function App() {
         horariosPreferidos.push('13:00-18:45');
       }
 
-      // Construir filtros del backend
-      const filtros: BackendUserFilters = {
-        dias_horarios_libres: {
-          habilitado: preferences.optimizations.includes('no-fridays'),
-          dias_libres_preferidos: preferences.optimizations.includes('no-fridays') ? ['VI'] : undefined,
-          minimizar_ventanas: preferences.optimizations.includes('minimize-gaps'),
-          ventana_ideal_minutos: preferences.optimizations.includes('minimize-gaps') ? 30 : undefined,
-        },
-        ventana_entre_actividades: {
-          habilitado: preferences.optimizations.includes('minimize-gaps'),
-          minutos_entre_clases: preferences.optimizations.includes('minimize-gaps') ? 15 : undefined,
-        },
-        preferencias_profesores: {
-          habilitado: ((preferences.profesoresPreferidos && preferences.profesoresPreferidos.length > 0) ||
-                      (preferences.profesoresEvitar && preferences.profesoresEvitar.length > 0)) || false,
-          profesores_preferidos: preferences.profesoresPreferidos,
-          profesores_evitar: preferences.profesoresEvitar,
-        },
+      // Construir bloques prohibidos a partir de blockedTimeSlots
+      const horariosProhibidos: string[] = [];
+      if (preferences.blockedTimeSlots && preferences.blockedTimeSlots.length > 0) {
+        // Agrupar por día
+        const grouped: Record<string, number[]> = {};
+        preferences.blockedTimeSlots.forEach((b: any) => {
+          if (!grouped[b.day]) grouped[b.day] = [];
+          grouped[b.day].push(b.timeSlotId);
+        });
+
+        // Para cada día, ordenar ids y crear rangos contiguos
+        Object.keys(grouped).forEach((day) => {
+          const ids = Array.from(new Set(grouped[day])).sort((a, b) => a - b);
+          let startIdx = 0;
+          for (let i = 0; i < ids.length; i++) {
+            const current = ids[i];
+            const next = ids[i + 1];
+            // si el siguiente no es contiguo o no existe, cerramos el rango
+            if (next !== current + 1) {
+              const firstSlot = TIME_SLOTS.find(s => s.id === ids[startIdx]);
+              const lastSlot = TIME_SLOTS.find(s => s.id === ids[i]);
+              if (firstSlot && lastSlot) {
+                const dayCode = dayMap[day] || day;
+                horariosProhibidos.push(`${dayCode} ${firstSlot.start} - ${lastSlot.end}`);
+              }
+              startIdx = i + 1;
+            }
+          }
+        });
+      }
+
+      // Construir filtros basado en las preferencias del usuario
+      const buildFiltros = (): BackendUserFilters => {
+        const filtros: BackendUserFilters = {};
+
+        // 1. Dias y horarios libres - BASADO EN HORARIOS BLOQUEADOS
+        if (preferences.blockedTimeSlots && preferences.blockedTimeSlots.length > 0) {
+          const diasLibres = new Set<string>();
+          
+          // Mapear nombres de días al formato de código de día (LU, MA, MI, JU, VI)
+          const dayMap: Record<string, string> = {
+            'Lunes': 'LU',
+            'Martes': 'MA',
+            'Miércoles': 'MI',
+            'Jueves': 'JU',
+            'Viernes': 'VI',
+          };
+          
+          preferences.blockedTimeSlots.forEach((slot: any) => {
+            const dayCode = dayMap[slot.day];
+            if (dayCode) {
+              diasLibres.add(dayCode);
+            }
+          });
+
+          filtros.dias_horarios_libres = {
+            habilitado: true,
+            dias_libres_preferidos: Array.from(diasLibres),
+            minimizar_ventanas: preferences.optimizations.includes('minimize-gaps'),
+            ventana_ideal_minutos: 30,
+          };
+        }
+
+        // 2. Ventana entre actividades
+        if (preferences.optimizations.includes('minimize-gaps')) {
+          filtros.ventana_entre_actividades = {
+            habilitado: true,
+            minutos_entre_clases: 15,
+          };
+        }
+
+        // 3. Preferencias de profesores (si las hay)
+        if (preferences.professorPreferences && preferences.professorPreferences.length > 0) {
+          filtros.preferencias_profesores = {
+            habilitado: true,
+            profesores_preferidos: preferences.professorPreferences.map((p: any) => p.professorId),
+            profesores_evitar: [],
+          };
+        }
+
+        return filtros;
       };
+
+      const filtros = buildFiltros();
 
       // Construir request para el backend
       const request: BackendSolveRequest = {
@@ -93,15 +168,16 @@ export default function App() {
         ramos_pasados: approvedCourseCodes,
         ramos_prioritarios: preferences.ramosPrioritarios || [],
         horarios_preferidos: horariosPreferidos,
+        horarios_prohibidos: horariosProhibidos.length > 0 ? horariosProhibidos : undefined,
         malla: 'MC2020.xlsx', // TODO: hacer esto configurable
         sheet: undefined,
         student_ranking: preferences.studentRanking || 0.5,
-        filtros,
+        filtros: Object.keys(filtros).length > 0 ? filtros : undefined,
       };
 
       console.log('Enviando request al backend:', request);
 
-      // Llamar al backend
+      // Llamar al backend: POST /rutacritica/run (según openapi.json)
       const response = await solveSchedule(request);
 
       console.log('Response del backend:', response);
@@ -208,12 +284,12 @@ export default function App() {
 
         {currentView === 'preferences' && (
           <PreferencesConfig
-            approvedCourses={approvedCourses}
-            preferences={userPreferences}
-            onPreferencesChange={setUserPreferences}
-            onContinue={() => handleGenerateSchedules(userPreferences)}
-            onBack={handleBackToMalla}
-          />
+              approvedCourses={approvedCourses}
+              preferences={userPreferences}
+              onPreferencesChange={setUserPreferences}
+              onContinue={(prefs) => handleGenerateSchedules(prefs)}
+              onBack={handleBackToMalla}
+            />
         )}
 
         {currentView === 'schedule' && (
