@@ -77,14 +77,17 @@ export default function App() {
         horariosPreferidos.push('13:00-18:45');
       }
 
-      // Construir bloques prohibidos a partir de blockedTimeSlots
+      // Construir bloques prohibidos a partir de:
+      // 1. blockedTimeSlots del usuario
+      // 2. Optimizaciones automáticas (sin viernes, clases mañana/tarde)
+      const horariosProhibidos: string[] = [];
+      
       // ESTRATEGIA: Consolidar múltiples días con LA MISMA FRANJA HORARIA en un solo bloque
       // Por ejemplo: LU 08:30-09:50, MA 08:30-09:50, MI 08:30-09:50 -> "LU MA MI 08:30 - 09:50"
-      const horariosProhibidos: string[] = [];
+      const franjaMap: Record<string, { days: Set<string>; start: string; end: string }> = {};
+      
+      // Paso 1: Agregar bloques explícitos del usuario
       if (preferences.blockedTimeSlots && preferences.blockedTimeSlots.length > 0) {
-        // Agrupar por FRANJA HORARIA (start-end), no por día
-        const franjaMap: Record<string, { days: Set<string>; start: string; end: string }> = {};
-        
         preferences.blockedTimeSlots.forEach((b: any) => {
           const slot = TIME_SLOTS.find(s => s.id === b.timeSlotId);
           if (slot) {
@@ -101,13 +104,76 @@ export default function App() {
             franjaMap[franjaKey].days.add(dayCode);
           }
         });
-
-        // Convertir cada franja consolidada a string "LU MA MI 08:30 - 09:50"
-        Object.values(franjaMap).forEach((franja) => {
-          const daysStr = Array.from(franja.days).sort().join(' ');
-          horariosProhibidos.push(`${daysStr} ${franja.start} - ${franja.end}`);
+      }
+      
+      // Paso 2: Agregar prohibiciones automáticas por optimizaciones
+      
+      // 2a) Sin Viernes: Prohibir TODO el viernes (VI)
+      if (preferences.optimizations.includes('no-fridays')) {
+        TIME_SLOTS.forEach((slot) => {
+          const franjaKey = `${slot.start}-${slot.end}`;
+          if (!franjaMap[franjaKey]) {
+            franjaMap[franjaKey] = {
+              days: new Set(),
+              start: slot.start,
+              end: slot.end,
+            };
+          }
+          franjaMap[franjaKey].days.add('VI');
         });
       }
+      
+      // 2b) Clases en la Mañana: Prohibir TARDE (13:00 en adelante para todos los días)
+      if (preferences.optimizations.includes('morning-classes')) {
+        TIME_SLOTS.forEach((slot) => {
+          // Si el slot empieza en o después de 13:00, es tarde
+          const slotStart = slot.start.split(':');
+          const slotHour = parseInt(slotStart[0], 10);
+          if (slotHour >= 13) {
+            const franjaKey = `${slot.start}-${slot.end}`;
+            if (!franjaMap[franjaKey]) {
+              franjaMap[franjaKey] = {
+                days: new Set(),
+                start: slot.start,
+                end: slot.end,
+              };
+            }
+            // Prohibir en todos los días
+            ['LU', 'MA', 'MI', 'JU', 'VI'].forEach(day => {
+              franjaMap[franjaKey].days.add(day);
+            });
+          }
+        });
+      }
+      
+      // 2c) Clases en la Tarde: Prohibir MAÑANA (antes de 13:00 para todos los días)
+      if (preferences.optimizations.includes('afternoon-classes')) {
+        TIME_SLOTS.forEach((slot) => {
+          // Si el slot empieza antes de 13:00, es mañana
+          const slotStart = slot.start.split(':');
+          const slotHour = parseInt(slotStart[0], 10);
+          if (slotHour < 13) {
+            const franjaKey = `${slot.start}-${slot.end}`;
+            if (!franjaMap[franjaKey]) {
+              franjaMap[franjaKey] = {
+                days: new Set(),
+                start: slot.start,
+                end: slot.end,
+              };
+            }
+            // Prohibir en todos los días
+            ['LU', 'MA', 'MI', 'JU', 'VI'].forEach(day => {
+              franjaMap[franjaKey].days.add(day);
+            });
+          }
+        });
+      }
+      
+      // Paso 3: Convertir cada franja consolidada a string "LU MA MI 08:30 - 09:50"
+      Object.values(franjaMap).forEach((franja) => {
+        const daysStr = Array.from(franja.days).sort().join(' ');
+        horariosProhibidos.push(`${daysStr} ${franja.start} - ${franja.end}`);
+      });
 
       // Construir filtros basado en las preferencias del usuario
       const buildFiltros = (): BackendUserFilters => {
@@ -174,6 +240,7 @@ export default function App() {
         sheet: undefined,
         student_ranking: preferences.studentRanking || 0.5,
         filtros: Object.keys(filtros).length > 0 ? filtros : undefined,
+        optimizations: preferences.optimizations && preferences.optimizations.length > 0 ? preferences.optimizations : undefined,
       };
 
       console.log('Enviando request al backend:', request);

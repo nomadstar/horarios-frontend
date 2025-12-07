@@ -69,5 +69,7 @@ export interface BackendSolveRequest {
   sheet?: string;
   student_ranking?: number;
   filtros?: BackendUserFilters;
+  // Optimizaciones de horario: 'no-fridays', 'morning-classes', 'afternoon-classes', 'compact-days', 'spread-days', 'minimize-gaps'
+  optimizations?: string[];
 }
 
