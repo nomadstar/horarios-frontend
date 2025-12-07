@@ -78,33 +78,34 @@ export default function App() {
       }
 
       // Construir bloques prohibidos a partir de blockedTimeSlots
+      // ESTRATEGIA: Consolidar múltiples días con LA MISMA FRANJA HORARIA en un solo bloque
+      // Por ejemplo: LU 08:30-09:50, MA 08:30-09:50, MI 08:30-09:50 -> "LU MA MI 08:30 - 09:50"
       const horariosProhibidos: string[] = [];
       if (preferences.blockedTimeSlots && preferences.blockedTimeSlots.length > 0) {
-        // Agrupar por día
-        const grouped: Record<string, number[]> = {};
+        // Agrupar por FRANJA HORARIA (start-end), no por día
+        const franjaMap: Record<string, { days: Set<string>; start: string; end: string }> = {};
+        
         preferences.blockedTimeSlots.forEach((b: any) => {
-          if (!grouped[b.day]) grouped[b.day] = [];
-          grouped[b.day].push(b.timeSlotId);
+          const slot = TIME_SLOTS.find(s => s.id === b.timeSlotId);
+          if (slot) {
+            const franjaKey = `${slot.start}-${slot.end}`;
+            const dayCode = dayMap[b.day] || b.day;
+            
+            if (!franjaMap[franjaKey]) {
+              franjaMap[franjaKey] = {
+                days: new Set(),
+                start: slot.start,
+                end: slot.end,
+              };
+            }
+            franjaMap[franjaKey].days.add(dayCode);
+          }
         });
 
-        // Para cada día, ordenar ids y crear rangos contiguos
-        Object.keys(grouped).forEach((day) => {
-          const ids = Array.from(new Set(grouped[day])).sort((a, b) => a - b);
-          let startIdx = 0;
-          for (let i = 0; i < ids.length; i++) {
-            const current = ids[i];
-            const next = ids[i + 1];
-            // si el siguiente no es contiguo o no existe, cerramos el rango
-            if (next !== current + 1) {
-              const firstSlot = TIME_SLOTS.find(s => s.id === ids[startIdx]);
-              const lastSlot = TIME_SLOTS.find(s => s.id === ids[i]);
-              if (firstSlot && lastSlot) {
-                const dayCode = dayMap[day] || day;
-                horariosProhibidos.push(`${dayCode} ${firstSlot.start} - ${lastSlot.end}`);
-              }
-              startIdx = i + 1;
-            }
-          }
+        // Convertir cada franja consolidada a string "LU MA MI 08:30 - 09:50"
+        Object.values(franjaMap).forEach((franja) => {
+          const daysStr = Array.from(franja.days).sort().join(' ');
+          horariosProhibidos.push(`${daysStr} ${franja.start} - ${franja.end}`);
         });
       }
 
