@@ -32,5 +32,8 @@ EXPOSE 5173
 # Set environment variables
 ENV NODE_ENV=production
 
+# Permitir que Railway asigne el puerto dinámicamente
+ENV PORT=5173
+
 # Start the application
-CMD ["serve", "-s", "dist", "-l", "5173"]
+CMD ["serve", "-s", "dist", "-l", "${PORT:-5173}"]
