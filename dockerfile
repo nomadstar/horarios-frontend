@@ -21,4 +21,4 @@ ENV NODE_ENV=development
 ENV CHOKIDAR_USEPOLLING=true
 
 # Start development server
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+CMD ["npm", "run", "build"]
